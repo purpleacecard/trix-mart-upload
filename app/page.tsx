@@ -52,7 +52,11 @@ export default function UploadForm() {
             const uploadResponse = await fetch(uploadUrl, {
                 method: "PUT",
                 body: file,
-                headers: { "Content-Type": file.type },
+                headers: {
+                    "Content-Type": file.type,
+                    "Access-Control-Allow-Origin": "*" // 👈 Temporary for testing
+                },
+                mode: "cors"
             });
 
             if (!uploadResponse.ok) throw new Error("S3 upload failed");
