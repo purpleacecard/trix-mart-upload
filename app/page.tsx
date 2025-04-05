@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { ChangeEvent, FormEvent, useState } from "react";
 import Image from "next/image";
 import Head from "next/head";
