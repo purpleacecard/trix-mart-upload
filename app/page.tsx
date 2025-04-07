@@ -141,13 +141,12 @@ export default function UploadForm() {
 
                         <form onSubmit={handleSubmit} className="w-full">
                             <input
-                                type="text"
+                                type="number"
                                 value={studentId}
                                 onChange={handleStudentIdChange}
                                 className="py-2 px-4 mb-4 w-full outline-none border-solid border-gray-300 border-2 focus:border-blue-500 rounded-xl"
                                 placeholder="Student ID (Numbers only)"
                                 pattern="\d*"
-                                inputMode="numeric"
                                 required
                             />
 
