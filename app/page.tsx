@@ -1,5 +1,5 @@
 'use client'
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState, useRef } from "react";
 import Image from "next/image";
 import Head from "next/head";
 
@@ -11,16 +11,51 @@ type UploadMessage = {
 export default function UploadForm() {
     const [studentId, setStudentId] = useState<string>("");
     const [file, setFile] = useState<File | null>(null);
+    const [filePreview, setFilePreview] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [message, setMessage] = useState<UploadMessage>({
         text: "",
         isError: false
     });
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            setFile(e.target.files[0]);
+        const selectedFile = e.target.files?.[0];
+        if (!selectedFile) return;
+
+        const extension = selectedFile.name.split('.').pop()?.toLowerCase();
+        const allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf', 'gif', 'webp', 'svg'];
+
+        if (!extension || !allowedExtensions.includes(extension)) {
+            setMessage({ text: "❌ Invalid file type. Allowed: " + allowedExtensions.join(', '), isError: true });
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
         }
+
+        if (selectedFile.size > 15 * 1024 * 1024) {
+            setMessage({ text: "❌ File too large (max 5MB)", isError: true });
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
+        setFile(selectedFile);
+
+        if (selectedFile.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                setFilePreview(reader.result as string);
+            };
+            reader.readAsDataURL(selectedFile);
+        } else {
+            setFilePreview(null);
+        }
+    };
+
+    const handleStudentIdChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value.replace(/\D/g, ''); // Remove non-numeric characters
+        setStudentId(value);
     };
 
     const handleSubmit = async (e: FormEvent) => {
@@ -35,16 +70,17 @@ export default function UploadForm() {
 
         try {
             const presignedResponse = await fetch(
-                "http://localhost:8080/api/students/get-presigned-url",
+                `${API_BASE_URL}/api/students/get-presigned-url`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ studentId }),
+                    body: JSON.stringify({ studentId: Number(studentId) }),
                 }
             );
 
             if (!presignedResponse.ok) {
-                throw new Error(await presignedResponse.text());
+                const error = await presignedResponse.json().catch(() => ({}));
+                throw new Error(error.message || "Failed to get presigned URL");
             }
 
             const { uploadUrl, fileKey } = await presignedResponse.json();
@@ -52,27 +88,30 @@ export default function UploadForm() {
             const uploadResponse = await fetch(uploadUrl, {
                 method: "PUT",
                 body: file,
-                headers: {
-                    "Content-Type": file.type,
-                    "Access-Control-Allow-Origin": "*" // 👈 Temporary for testing
-                },
-                mode: "cors"
+                headers: { "Content-Type": file.type },
             });
 
             if (!uploadResponse.ok) throw new Error("S3 upload failed");
 
             const updateResponse = await fetch(
-                "http://localhost:8080/api/students/update-file",
+                `${API_BASE_URL}/api/students/update-file`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ studentId, fileKey }),
+                    body: JSON.stringify({
+                        studentId: Number(studentId),
+                        fileKey
+                    }),
                 }
             );
 
             if (!updateResponse.ok) throw new Error("Failed to update record");
 
             setMessage({ text: "✅ Upload successful!", isError: false });
+            setStudentId("");
+            setFile(null);
+            setFilePreview(null);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         } catch (err) {
             setMessage({
                 text: `❌ Error: ${err instanceof Error ? err.message : "Unknown error"}`,
@@ -102,36 +141,49 @@ export default function UploadForm() {
 
                         <form onSubmit={handleSubmit} className="w-full">
                             <input
-                                type="number"
+                                type="text"
                                 value={studentId}
-                                onChange={(e) => setStudentId(e.target.value)}
+                                onChange={handleStudentIdChange}
                                 className="py-2 px-4 mb-4 w-full outline-none border-solid border-gray-300 border-2 focus:border-blue-500 rounded-xl"
-                                placeholder="Student ID"
+                                placeholder="Student ID (Numbers only)"
+                                pattern="\d*"
+                                inputMode="numeric"
                                 required
                             />
 
                             <div className="flex items-center justify-center w-full">
                                 <label
                                     htmlFor="dropzone-file"
-                                    className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
+                                    className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 relative overflow-hidden"
                                 >
-                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                        <svg className="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
-                                            <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
-                                        </svg>
-                                        <p className="mb-2 text-sm text-gray-500">
-                                            <span className="font-semibold">Click to upload</span> or drag and drop
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {file ? file.name : 'PNG, JPG, or PDF (MAX. 5MB)'}
-                                        </p>
-                                    </div>
+                                    {filePreview ? (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <img
+                                                src={filePreview}
+                                                alt="Preview"
+                                                className="object-contain max-h-full max-w-full p-2"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                            <svg className="w-8 h-8 mb-4 text-gray-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 16">
+                                                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 13h3a3 3 0 0 0 0-6h-.025A5.56 5.56 0 0 0 16 6.5 5.5 5.5 0 0 0 5.207 5.021C5.137 5.017 5.071 5 5 5a4 4 0 0 0 0 8h2.167M10 15V6m0 0L8 8m2-2 2 2"/>
+                                            </svg>
+                                            <p className="mb-2 text-sm text-gray-500">
+                                                <span className="font-semibold">Click to upload</span> or drag and drop
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                                PNG, JPG, or PDF (MAX. 5MB)
+                                            </p>
+                                        </div>
+                                    )}
                                     <input
                                         id="dropzone-file"
                                         type="file"
                                         className="hidden"
                                         accept="image/*,application/pdf"
                                         onChange={handleFileChange}
+                                        ref={fileInputRef}
                                         required
                                     />
                                 </label>
