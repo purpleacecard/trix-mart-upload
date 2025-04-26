@@ -58,7 +58,10 @@ export default function UploadForm() {
         setStudentId(value);
     };
 
-    const handleSubmit = async (e: FormEvent) => {
+    //replace the handle submit fuction with this 
+
+
+const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
         if (!file || !studentId) {
             setMessage({ text: "❌ Please fill all fields", isError: true });
@@ -69,12 +72,19 @@ export default function UploadForm() {
         setMessage({ text: "", isError: false });
 
         try {
+            const fileExtension = file.name.split('.').pop()?.toLowerCase();
+            if (!fileExtension) {
+                throw new Error("Could not determine file extension");
+            }
             const presignedResponse = await fetch(
                 `${API_BASE_URL}/api/students/get-presigned-url`,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ studentId: Number(studentId) }),
+                    body: JSON.stringify({
+                        studentId: Number(studentId),
+                        fileExtension
+                    }),
                 }
             );
 
